@@ -64,6 +64,11 @@ stdenv.mkDerivation rec {
         --replace /bin/bash ${customBash}/bin/bash \
         --replace /usr/bin/env ${coreutils}/bin/env
     done
+
+    # Tell the bootstrapped bazel to not use network (fail-fast)
+    sed -e '/bazel_build/a\  --fetch=no \\' \
+        -i ./compile.sh
+
     # Fixup scripts that generate scripts. Not fixed up by patchShebangs below.
     substituteInPlace scripts/bootstrap/compile.sh \
         --replace /bin/sh ${customBash}/bin/bash
