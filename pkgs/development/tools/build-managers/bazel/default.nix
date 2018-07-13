@@ -25,12 +25,28 @@ stdenv.mkDerivation rec {
     sha256 = "00mnlzcflnsdah8dvpaq0jqawmhgmv9mrjah6cr8qssycbk1ddy3";
   };
 
+  # NOTE tempdir
+  # If TMPDIR is in the unpack dir we run afoul of blaze's infinite symlink
+  # detector (see com.google.devtools.build.lib.skyframe.FileFunction).
+  # Change this to $(mktemp -d) as soon as we figure out why.
+
+  # NOTE bash completions
+  # The bash_completion target is disabled for now, since it is in need of
+  # additional packages fetched by http.
+  # To re-add them some parts of the deps phase of the `buildBazelPackage`
+  # `deps` subderivation need to be factored out first.
+
+  # NOTE fetch=no
+  # Ideally, the bazel bootstrap would set `--fetch=no` so that it fails fast
+  # on missing packages, but then it looks like it can’t deal with internal
+  # packages like `@bazel_tools`, see
+  # https://github.com/bazelbuild/bazel/pull/4860#issuecomment-404485804
+
   sourceRoot = ".";
 
   patches = lib.optional enableNixHacks ./nix-hacks.patch;
 
   # Bazel expects several utils to be available in Bash even without PATH. Hence this hack.
-
   customBash = writeCBin "bash" ''
     #include <stdio.h>
     #include <stdlib.h>
@@ -65,9 +81,10 @@ stdenv.mkDerivation rec {
         --replace /usr/bin/env ${coreutils}/bin/env
     done
 
+    # not possible yet, see NOTE fetch=no
     # Tell the bootstrapped bazel to not use network (fail-fast)
-    sed -e '/bazel_build/a\  --fetch=no \\' \
-        -i ./compile.sh
+    # sed -e '/bazel_build/a\  --fetch=no \\' \
+    #     -i ./compile.sh
 
     # Fixup scripts that generate scripts. Not fixed up by patchShebangs below.
     substituteInPlace scripts/bootstrap/compile.sh \
@@ -80,6 +97,7 @@ stdenv.mkDerivation rec {
     sed -i -e "361 a --host_copt=\"$(echo $NIX_CFLAGS_COMPILE | sed -e 's/ /" --host_copt=\"/g')\" \\\\" scripts/bootstrap/compile.sh
     sed -i -e "361 a --linkopt=\"-Wl,$(echo $NIX_LDFLAGS | sed -e 's/ /" --linkopt=\"-Wl,/g')\" \\\\" scripts/bootstrap/compile.sh
     sed -i -e "361 a --host_linkopt=\"-Wl,$(echo $NIX_LDFLAGS | sed -e 's/ /" --host_linkopt=\"-Wl,/g')\" \\\\" scripts/bootstrap/compile.sh
+
     patchShebangs .
   '';
 
@@ -96,21 +114,20 @@ stdenv.mkDerivation rec {
     customBash
   ] ++ lib.optionals (stdenv.isDarwin) [ libcxx CoreFoundation CoreServices Foundation ];
 
-  # If TMPDIR is in the unpack dir we run afoul of blaze's infinite symlink
-  # detector (see com.google.devtools.build.lib.skyframe.FileFunction).
-  # Change this to $(mktemp -d) as soon as we figure out why.
-
   buildPhase = ''
+    # see NOTE tempdir
     export TMPDIR=/tmp
-    ./compile.sh
-    ./output/bazel --output_user_root=/tmp/.bazel build //scripts:bash_completion \
-      --spawn_strategy=standalone \
-      --genrule_strategy=standalone
-    cp bazel-bin/scripts/bazel-complete.bash output/
+
+    env VERBOSE=yes ./compile.sh
+
+    # disabled, see note bash completions
+    # ./output/bazel --output_user_root=/tmp/.bazel build //scripts:bash_completion \
+    #   --spawn_strategy=standalone \
+    #   --genrule_strategy=standalone
+    # cp bazel-bin/scripts/bazel-complete.bash output/
   '';
 
   # Build the CPP and Java examples to verify that Bazel works.
-
   doCheck = true;
   checkPhase = ''
     export TEST_TMPDIR=$(pwd)
@@ -123,9 +140,11 @@ stdenv.mkDerivation rec {
     mkdir -p $out/bin
     mv output/bazel $out/bin
     wrapProgram "$out/bin/bazel" --set JAVA_HOME "${jdk}"
-    mkdir -p $out/share/bash-completion/completions $out/share/zsh/site-functions
-    mv output/bazel-complete.bash $out/share/bash-completion/completions/
-    cp scripts/zsh_completion/_bazel $out/share/zsh/site-functions/
+
+    # disabled, see NOTE bash completions
+    # mkdir -p $out/share/bash-completion/completions $out/share/zsh/site-functions
+    # mv output/bazel-complete.bash $out/share/bash-completion/completions/
+    # cp scripts/zsh_completion/_bazel $out/share/zsh/site-functions/
   '';
 
   # Save paths to hardcoded dependencies so Nix can detect them.
