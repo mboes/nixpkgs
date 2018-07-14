@@ -1,4 +1,5 @@
-{ stdenv, lib, fetchurl, jdk, zip, unzip, bash, writeCBin, coreutils, makeWrapper, which, python, gnused
+{ stdenv, lib, fetchurl, jdk, zip, unzip, bash, writeCBin, makeWrapper, python
+, coreutils, findutils, gnugrep, gnused, which
 # Always assume all markers valid (don't redownload dependencies).
 # Also, don't clean up environment variables.
 , enableNixHacks ? false
@@ -6,6 +7,8 @@
 , libcxx, CoreFoundation, CoreServices, Foundation
 }:
 
+let defaultShellPath = lib.makeBinPath [ bash coreutils findutils gnugrep gnused which ];
+in
 stdenv.mkDerivation rec {
 
   version = "0.15.0";
@@ -57,7 +60,7 @@ stdenv.mkDerivation rec {
 
     int main(int argc, char *argv[]) {
       char *path = getenv("PATH");
-      char *pathToAppend = "${lib.makeBinPath [ coreutils gnused ]}";
+      char *pathToAppend = "${defaultShellPath}";
       char *newPath;
       if (path != NULL) {
         int length = strlen(path) + 1 + strlen(pathToAppend) + 1;
@@ -150,7 +153,7 @@ stdenv.mkDerivation rec {
   # Save paths to hardcoded dependencies so Nix can detect them.
   postFixup = ''
     mkdir -p $out/nix-support
-    echo "${customBash} ${gnused} ${coreutils}" > $out/nix-support/depends
+    echo "${customBash} ${defaultShellPath}" > $out/nix-support/depends
   '';
 
   dontStrip = true;
